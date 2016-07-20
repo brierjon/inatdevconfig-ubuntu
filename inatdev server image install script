@@ -1,0 +1,115 @@
+// install script for inaturalist configuration on a virtual machine ubuntu***
+//this is tried on both a ubuntu 14.04.4 server on AMD 64 and 16.04 server on AMD 64
+
+//16.04 server installed via std image install. Selection of encrypted disc
+//simple configuration with a single user and password.
+
+//install ruby on rails 2.2.5 per instructions https://gorails.com/setup/ubuntu/16.04
+sudo apt-get update
+sudo apt-get install git-core curl zlib1g-dev build-essential libssl-dev libreadline-dev libyaml-dev libsqlite3-dev sqlite3 libxml2-dev libxslt1-dev libcurl4-openssl-dev python-software-properties libffi-dev
+
+cd
+git clone https://github.com/rbenv/rbenv.git ~/.rbenv
+echo 'export PATH="$HOME/.rbenv/bin:$PATH"' >> ~/.bashrc
+echo 'eval "$(rbenv init -)"' >> ~/.bashrc
+exec $SHELL
+
+git clone https://github.com/rbenv/ruby-build.git ~/.rbenv/plugins/ruby-build
+echo 'export PATH="$HOME/.rbenv/plugins/ruby-build/bin:$PATH"' >> ~/.bashrc
+exec $SHELL
+
+git clone https://github.com/rbenv/rbenv-gem-rehash.git ~/.rbenv/plugins/rbenv-gem-rehash
+
+rbenv install 2.2.5
+rbenv global 2.2.5
+ruby -v
+
+gem install bundler
+rbenv rehash
+
+
+
+// installing rails 4.2.6 https://gorails.com/setup/ubuntu/16.04
+curl -sL https://deb.nodesource.com/setup_4.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+gem install rails -v 4.2.6
+
+rbenv rehash
+
+//setup PostgreSQL
+sudo sh -c "echo 'deb http://apt.postgresql.org/pub/repos/apt/ xenial-pgdg main' > /etc/apt/sources.list.d/pgdg.list"
+wget --quiet -O - http://apt.postgresql.org/pub/repos/apt/ACCC4CF8.asc | sudo apt-key add -
+sudo apt-get update
+sudo apt-get install postgresql-common
+sudo apt-get install postgresql-9.5 libpq-dev
+
+sudo -u postgres createuser jonathan -s
+sudo -u postgres createuser inatdev -s
+
+rails new inatdev -d postgresql
+
+cd inatdev //the database user is inatdev and inatdev_production is the database name
+rake db:create
+
+rails server
+
+//adding other files and packages needed per https://github.com/inaturalist/inaturalist/wiki/development-setup-guide
+
+sudo apt-get install postgis -y
+sudo apt-get install elasticsearch -y
+
+// setup database from withing the inatdev folder
+create db template_postgis
+psql template_postgis -c "UPDATE pg_database SET datistemplate = TRUE WHERE datname = 'template_postgis'"
+psql template_postgis < /usr/share/postgresql/9.5/contrib/postgis-2.2/postgis.sql //psql template_postgis < /path/to/postgis.sql
+psql template_postgis < /usr/share/postgresql/9.5/contrib/postgis-2.2/spatial_ref_sys.sql //psql template_postgis < /path/to/spatial_ref_sys.sql
+
+//installing inaturalist via https://github.com/inaturalist/inaturalist/wiki/development-setup-guide from Githum within the inatdev folder
+
+//*** Get the code
+git clone https://github.com/inaturalist/inaturalist.git
+cd inaturalist/
+
+//*** Default config should work at first, but you will need to add API keys for things like 3rd party sign in
+cp config/config.yml.example config/config.yml
+cp config/database.yml.example config/database.yml
+//****** cp config/gmaps_api_key.yml.example config/gmaps_api_key.yml // did not work since the file does not exist in the git repo - would probably contain the api key for google maps only necessary if wanting full production. If there are issues later with the setup this may be the reason.
+cp config/smtp.yml.example config/smtp.yml
+
+//*** set up your gems
+bundle
+
+//*** Load the schema execute from /inatdev folder
+rake db:migrate
+rake db:setup
+
+//manual elastic search install
+
+curl -O https://download.elastic.co/elasticsearch/release/org/elasticsearch/distribution/tar/elasticsearch/2.3.3/elasticsearch-2.3.3.tar.gz
+tar -zxf elasticsearch-2.3.3.tar.gz
+mv elasticsearch-2.3.3.tar.gz elasticsearch
+rm elasticsearch-2.3.3.tar.gz
+
+cd elasticsearch
+bin/plugin install analysis-kuromoji
+cd ..
+
+//starts the application from /inatdev/inaturalist level
+rails s &
+
+//starts the delayed job from /inatdev/inaturalist level
+./script/delayed_job start
+
+//install dummy test users, posts, and observations while rails is running and delayed job started
+rails r tools/load_dummy_users.rb   
+rails r tools/load_dummy_observations.rb   
+rails r tools/load_dummy_posts.rb   
+ 
+ //installed xfce to view the servre (just for virtualbox simplification to check if its working- not for full install- sudo apt-get install xubuntu-desktop (removed some applications like libreoffice, cheese, calc, games etc))
+ 
+//load the test users, observations, and posts
+
+// Other Config to try
+//install of ruby per http://www.ruby-lang.org/en/documentation/installation/#apt
+sudo apt-get install ruby-full
